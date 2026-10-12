@@ -1,6 +1,12 @@
-# DPIA-lite — điền trong checkpoint 5
+# DPIA-lite — mô phỏng đánh giá tác động
 
-1. Loại dữ liệu và phân loại:
-2. Mục đích xử lý và principal:
-3. Dữ liệu đi qua những run/tool nào, endpoint nào:
-4. Bằng chứng deny/allow và giới hạn của mock:
+Ngày: 12/10/2026. Đây là tài liệu kỹ thuật cho lab, chưa phải hồ sơ đánh giá tác động được nộp cho cơ quan quản lý.
+
+1. **Dữ liệu:** ticket trong `corpus/` là nội dung không tin cậy, phân loại internal; `data/customers.json` chứa tên, email, SĐT, CCCD, STK **tổng hợp**. Toàn bộ hồ sơ được gắn restricted trong policy lab; nhãn này là phân loại kỹ thuật, không đồng nhất mọi field với dữ liệu nhạy cảm theo pháp luật. Token lịch sử là giả, vô hiệu.
+2. **Mục đích/quyền:** Run A dùng `summarize-tickets`; Run B dùng `support-reply`. `support_l1` chỉ tìm ticket và bị deny trước khi mở private store. `dpo` được đọc khách liên kết với ticket. Quyền giao giữa registry mô phỏng, scopes agent và parent; TTL năm phút, kiểm tra lại mỗi boundary. `billing` không được dùng mục đích `support-reply`.
+3. **Luồng:** yêu cầu → Run A/search_docs → redact trước summarize → chỉ `list[int]` từ tên file sang Run B → kiểm quyền trước mở mapping → `related_tickets` tin cậy → kiểm quyền trước read_customer. Nội dung attacker, URL và customer ID trích từ text không truyền sang B. Run B không tìm corpus; policy chặn restricted + egress. Không dùng API LLM thật.
+4. **Đích/ghi nhận:** baseline chỉ POST tới `http://127.0.0.1:10024/reconcile`. Sau containment không POST hồ sơ nào; attack-after và bốn variant-after rỗng. Ledger giữ timestamp, principal giả lập, agent/run ID, expiry, classification, decision, reason và SHA256 của arguments; không giữ PII thô. Before log có PII synthetic để chứng minh bài lab.
+5. **Rủi ro còn lại:** regex chưa nhận diện tên người, mọi định dạng tài khoản hay Unicode lạ; kết quả 100% chỉ trên test set tổng hợp. Split là các hàm/run logic trong cùng process, không phải sandbox OS. File mapping chứa toàn bộ hồ sơ nên DPO mở file có thể thấy toàn bộ dữ liệu trong bộ nhớ; production cần chỉ mục metadata riêng và kiểm soát từng record. `--as` không xác thực người thật. Hash chain không chống cắt đuôi hay viết lại cả chuỗi, không đồng bộ nhiều writer và cần mốc tin cậy ngoài file khi dùng thật.
+6. **Lưu giữ/quyền chủ thể:** evidence lưu trong repo cho chấm bài; chưa triển khai consent, retention tự động, xóa theo yêu cầu, xóa cascade hoặc hồ sơ chuyển dữ liệu xuyên biên giới. Production phải xác định cơ sở xử lý, thời hạn lưu giữ, người chịu trách nhiệm, quy trình sự cố và quyền chủ thể trước triển khai. Không bổ sung thông tin cá nhân thật vào lab.
+
+Bằng chứng: `reports/verification.md`, `reports/ledger.jsonl`, `reports/replay-before.json`, `reports/replay-after.json` và `reports/compliance-mapping.md`.
