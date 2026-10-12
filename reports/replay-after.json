@@ -1,0 +1,35 @@
+[
+  {
+    "variant": 1,
+    "files": [
+      "ticket-901.md"
+    ],
+    "recognized": true,
+    "sink_bytes": 0
+  },
+  {
+    "variant": 2,
+    "files": [
+      "ticket-902.md"
+    ],
+    "recognized": true,
+    "sink_bytes": 0
+  },
+  {
+    "variant": 3,
+    "files": [
+      "ticket-903.md"
+    ],
+    "recognized": true,
+    "sink_bytes": 0
+  },
+  {
+    "variant": 4,
+    "files": [
+      "ticket-904.md",
+      "ticket-904b.md"
+    ],
+    "recognized": true,
+    "sink_bytes": 0
+  }
+]
