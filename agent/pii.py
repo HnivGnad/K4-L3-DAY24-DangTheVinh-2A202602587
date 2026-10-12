@@ -29,11 +29,27 @@ set ở tests/vn_pii_testset.jsonl):
 Đo bằng: pytest tests/test_pii.py -v -s   (in ra precision/recall)
 """
 from __future__ import annotations
+import re
 
 
 def detect(text: str) -> list[dict]:
-    raise NotImplementedError("BƯỚC 3a: implement PII detection")
+    entities = []
+    patterns = [
+        ("VN_BANK_ACCOUNT", r"(?:\bSTK\b|số tài khoản|so tai khoan|bank_account)\s*[:=]?\s*[\"']?(?P<value>[0-9]{8,16})(?![0-9])"),
+        ("EMAIL", r"(?<![\w.+-])(?P<value>[\w.+-]+@[\w-]+(?:\.[\w-]+)+)"),
+        ("VN_CCCD", r"(?<![0-9])(?P<value>[0-9]{12})(?![0-9])"),
+        ("VN_PHONE", r"(?<![0-9])(?P<value>0(?:[ -]?[0-9]){9,10})(?![ -]?[0-9])"),
+    ]
+    # Context-labelled accounts take priority over ambiguous numeric formats.
+    for kind, pattern in patterns:
+        for match in re.finditer(pattern, text, re.IGNORECASE):
+            start, end = match.span("value")
+            if not any(start < e["end"] and e["start"] < end for e in entities):
+                entities.append({"type": kind, "start": start, "end": end})
+    return sorted(entities, key=lambda e: e["start"])
 
 
 def redact(text: str) -> str:
-    raise NotImplementedError("BƯỚC 3a: implement PII redaction")
+    for entity in reversed(detect(text)):
+        text = text[:entity["start"]] + f"[REDACTED_{entity['type']}]" + text[entity["end"]:]
+    return text
