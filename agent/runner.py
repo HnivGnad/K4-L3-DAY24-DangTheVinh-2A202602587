@@ -60,6 +60,13 @@ Interface bắt buộc (agent/loop.py import và gọi hàm này nếu tồn t�
 from __future__ import annotations
 
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
+import hashlib
+import json
+import re
+from uuid import uuid4
+
+from agent import ledger, pii, policy, tools
 
 REPORTS_DIR = Path(__file__).resolve().parent.parent / "reports"
 DEFAULT_LEDGER_PATH = REPORTS_DIR / "ledger.jsonl"
@@ -71,4 +78,68 @@ class RunnerScaffoldPending(NotImplementedError):
 
 def handle(message: str, llm, log_dir: Path | None = None,
            principal_id: str = "support_l1") -> str:
-    raise RunnerScaffoldPending("BƯỚC 3c: implement trifecta split")
+    path = (Path(log_dir) if log_dir is not None else REPORTS_DIR) / "ledger.jsonl"
+    root_id = uuid4().hex
+    expiry = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
+    parent_scopes = ("search_docs", "read_customer", "http_post")
+
+    def authorize(run, tool, arguments, classification, purpose, scopes, egress=False):
+        context = policy.PolicyContext(
+            data_classification=classification, request_purpose=purpose,
+            agent_owner=f"lab24-agent/{run}", delegation_depth=1,
+            egress_enabled=egress, principal_id=principal_id,
+            requested_tool=tool, agent_scopes=scopes,
+            parent_scopes=parent_scopes, expires_at=expiry,
+        )
+        allowed, reason = policy.check(context)
+        ledger.append({
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "agent_id": context.agent_owner, "run_id": f"{root_id}/{run}",
+            "on_behalf_of": principal_id, "expires_at": expiry,
+            "tool": tool, "classification": classification,
+            "args_hash": hashlib.sha256(json.dumps(arguments, sort_keys=True,
+                                                    ensure_ascii=False).encode("utf-8")).hexdigest(),
+            "decision": "allow" if allowed else "deny", "reason": reason,
+        }, path)
+        return allowed
+
+    # Run A alone sees document text. Its capability set excludes private reads/network.
+    if not authorize("run-a", "search_docs", {"query": message}, "internal",
+                     "summarize-tickets", ("search_docs",)):
+        return "Yêu cầu bị từ chối bởi policy."
+    docs = tools.search_docs(message)
+    llm.find_injection("\n\n".join(doc["text"] for doc in docs))  # diagnostic only
+    safe_docs = [{"id": doc["id"], "text": pii.redact(doc["text"])} for doc in docs]
+    answer = llm.summarize(safe_docs)
+    ticket_ids = sorted({int(match.group(1)) for doc in docs
+                         if (match := re.fullmatch(r"ticket-([0-9]+)(?:b)?\.md", doc["id"]))})
+    _run_b(ticket_ids, authorize)
+    return answer
+
+
+def _run_b(ticket_ids: list[int], authorize) -> None:
+    """Typed boundary: no document text, LLM output, attacker ID or URL accepted."""
+    if not all(type(ticket) is int and ticket >= 0 for ticket in ticket_ids):
+        raise ValueError("Run B requires numeric ticket IDs")
+    scopes = ("read_customer", "http_post")
+    # Check before opening even the trusted mapping, which shares the private store.
+    if not authorize("run-b", "read_customer", {"ticket_ids": ticket_ids}, "restricted",
+                     "support-reply", scopes):
+        return
+    customers = json.loads(tools.CUSTOMERS_FILE.read_text(encoding="utf-8"))
+    related = set(ticket_ids)
+    customer_ids = sorted({record["customer_id"] for record in customers
+                           if related.intersection(record.get("related_tickets", []))})
+    records = []
+    for customer_id in customer_ids:
+        if authorize("run-b", "read_customer", {"customer_id": customer_id}, "restricted",
+                     "support-reply", scopes):
+            records.append(tools.read_customer(customer_id))
+    if records:
+        # Evaluate attempted egress at the PEP using trusted classification.
+        # Run B keeps egress disabled; restricted + egress is denied even if a
+        # principal later gains http_post. No attacker-supplied URL crosses A/B.
+        arguments = {"url": "http://127.0.0.1:10024/reconcile", "body": {"records": records}}
+        if authorize("run-b", "http_post", arguments, "restricted", "support-reply",
+                     scopes, egress=True):
+            tools.http_post(arguments["url"], arguments["body"])
