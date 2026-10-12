@@ -35,6 +35,11 @@ không phải xác thực người dùng production.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
+import json
+from pathlib import Path
+
+PRINCIPALS_FILE = Path(__file__).resolve().parent.parent / "data" / "principals.json"
 
 
 @dataclass(frozen=True)
@@ -52,4 +57,30 @@ class PolicyContext:
 
 
 def check(context: PolicyContext) -> tuple[bool, str]:
-    raise NotImplementedError("BƯỚC 3b: implement policy check")
+    if context.data_classification not in {"public", "internal", "restricted"}:
+        return False, "Unknown data classification"
+    if context.data_classification == "restricted" and context.egress_enabled:
+        return False, "Restricted data cannot enter a run with egress enabled"
+    if not context.agent_owner or context.delegation_depth < 0:
+        return False, "Missing agent identity or invalid delegation depth"
+    try:
+        expiry = datetime.fromisoformat(context.expires_at.replace("Z", "+00:00"))
+        if expiry.tzinfo is None or expiry <= datetime.now(timezone.utc):
+            return False, "Run expired or expiry has no timezone"
+    except (ValueError, TypeError, AttributeError):
+        return False, "Missing or invalid run expiry"
+    try:
+        principals = json.loads(PRINCIPALS_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False, "Trusted principal registry unavailable"
+    principal = principals.get(context.principal_id)
+    if not principal:
+        return False, "Unknown simulated principal"
+    if context.request_purpose not in principal["purposes"]:
+        return False, "Purpose outside principal authorization"
+    effective = set(principal["allowed_tools"]) & set(context.agent_scopes)
+    if context.delegation_depth > 0:
+        effective &= set(context.parent_scopes)
+    if context.requested_tool not in effective:
+        return False, "Tool outside principal, agent or parent scopes"
+    return True, "Tool authorized for purpose within effective scopes and run TTL"
