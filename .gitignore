@@ -1,6 +1,9 @@
 __pycache__/
 *.pyc
 .venv/
+.tool-cache/
+.tools/
+.pre-commit-cache/
 .pytest_cache/
 .pytest_tmp/
 reports/sink.log

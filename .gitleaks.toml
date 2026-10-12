@@ -8,3 +8,12 @@ id = "lab24-synthetic-token"
 description = "A deliberately invalid lab token; never use real credentials"
 regex = '''LAB24_FAKE_TOKEN=LAB24-DEMO-[A-Z0-9]{16}'''
 keywords = ["LAB24_FAKE_TOKEN"]
+
+[[allowlists]]
+description = "Local generated environments and downloaded tooling; application sources remain scanned"
+paths = [
+  '''(^|[\\/])\.venv[\\/]''',
+  '''(^|[\\/])\.tools[\\/]''',
+  '''(^|[\\/])\.tool-cache[\\/]''',
+  '''(^|[\\/])\.pre-commit-cache[\\/]''',
+]
