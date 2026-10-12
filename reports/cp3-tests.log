@@ -1,0 +1,10 @@
+..✗ Không thấy file: C:\Users\ADMIN\AppData\Local\Temp\pytest-of-ADMIN\pytest-53\test_missing_pair_is_failure0\ticket-904b.md
+
+0/1 lure sẵn sàng.
+.........................
+[pii] gold=118 pred=118 tp=118
+[pii] precision=1.000 recall=1.000
+...........
+38 passed in 6.48s
+
+EXIT_CODE=0
